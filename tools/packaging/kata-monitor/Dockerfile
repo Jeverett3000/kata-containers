@@ -8,7 +8,7 @@ WORKDIR /go/src/github.com/kata-containers/kata-containers/src/runtime
 COPY . /go/src/github.com/kata-containers/kata-containers
 RUN SKIP_GO_VERSION_CHECK=true make monitor
 
-FROM alpine:3.14
+FROM alpine:3.16
 COPY --from=builder /go/src/github.com/kata-containers/kata-containers/src/runtime/kata-monitor /usr/bin/kata-monitor
 CMD ["-h"]
 ENTRYPOINT ["/usr/bin/kata-monitor"]
