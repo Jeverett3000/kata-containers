@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-FROM alpine:3.16
+FROM alpine:3.19.4
 
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 RUN apk --no-cache add \
