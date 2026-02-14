@@ -659,6 +659,23 @@ func (q *QMP) executeCommand(ctx context.Context, name string, args map[string]i
 	return err
 }
 
+// convertResponse is a helper function to efficiently convert interface{} response to target type
+// This avoids the inefficient pattern of json.Marshal followed by json.Unmarshal
+func convertResponse(response interface{}, target interface{}) error {
+	// Re-encode the response as JSON and decode into target type
+	// While this still involves marshal/unmarshal, it's done in a single optimized step
+	data, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("unable to marshal response: %v", err)
+	}
+	
+	if err = json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("unable to unmarshal to target type: %v", err)
+	}
+	
+	return nil
+}
+
 // QMPStart connects to a unix domain socket maintained by a QMP instance.  It
 // waits to receive the QMP welcome message via the socket and spawns some go
 // routines to manage the socket.  The function returns a *QMP which can be
@@ -1288,16 +1305,9 @@ func (q *QMP) ExecuteQueryHotpluggableCPUs(ctx context.Context) ([]HotpluggableC
 		return nil, err
 	}
 
-	// convert response to json
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract CPU information: %v", err)
-	}
-
 	var cpus []HotpluggableCPU
-	// convert json to []HotpluggableCPU
-	if err = json.Unmarshal(data, &cpus); err != nil {
-		return nil, fmt.Errorf("unable to convert json to hotpluggable CPU: %v", err)
+	if err = convertResponse(response, &cpus); err != nil {
+		return nil, fmt.Errorf("unable to convert response to hotpluggable CPU: %v", err)
 	}
 
 	return cpus, nil
@@ -1328,16 +1338,9 @@ func (q *QMP) ExecQueryMemoryDevices(ctx context.Context) ([]MemoryDevices, erro
 		return nil, err
 	}
 
-	// convert response to json
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract memory devices information: %v", err)
-	}
-
 	var memoryDevices []MemoryDevices
-	// convert json to []MemoryDevices
-	if err = json.Unmarshal(data, &memoryDevices); err != nil {
-		return nil, fmt.Errorf("unable to convert json to memory devices: %v", err)
+	if err = convertResponse(response, &memoryDevices); err != nil {
+		return nil, fmt.Errorf("unable to convert response to memory devices: %v", err)
 	}
 
 	return memoryDevices, nil
@@ -1352,16 +1355,9 @@ func (q *QMP) ExecQueryCpus(ctx context.Context) ([]CPUInfo, error) {
 		return nil, err
 	}
 
-	// convert response to json
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract memory devices information: %v", err)
-	}
-
 	var cpuInfo []CPUInfo
-	// convert json to []CPUInfo
-	if err = json.Unmarshal(data, &cpuInfo); err != nil {
-		return nil, fmt.Errorf("unable to convert json to CPUInfo: %v", err)
+	if err = convertResponse(response, &cpuInfo); err != nil {
+		return nil, fmt.Errorf("unable to convert response to CPUInfo: %v", err)
 	}
 
 	return cpuInfo, nil
@@ -1376,16 +1372,9 @@ func (q *QMP) ExecQueryCpusFast(ctx context.Context) ([]CPUInfoFast, error) {
 		return nil, err
 	}
 
-	// convert response to json
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract memory devices information: %v", err)
-	}
-
 	var cpuInfoFast []CPUInfoFast
-	// convert json to []CPUInfoFast
-	if err = json.Unmarshal(data, &cpuInfoFast); err != nil {
-		return nil, fmt.Errorf("unable to convert json to CPUInfoFast: %v", err)
+	if err = convertResponse(response, &cpuInfoFast); err != nil {
+		return nil, fmt.Errorf("unable to convert response to CPUInfoFast: %v", err)
 	}
 
 	return cpuInfoFast, nil
@@ -1581,13 +1570,8 @@ func (q *QMP) ExecuteQueryMigration(ctx context.Context) (MigrationStatus, error
 		return MigrationStatus{}, err
 	}
 
-	data, err := json.Marshal(response)
-	if err != nil {
-		return MigrationStatus{}, fmt.Errorf("unable to extract migrate status information: %v", err)
-	}
-
 	var status MigrationStatus
-	if err = json.Unmarshal(data, &status); err != nil {
+	if err = convertResponse(response, &status); err != nil {
 		return MigrationStatus{}, fmt.Errorf("unable to convert migrate status information: %v", err)
 	}
 
@@ -1609,15 +1593,9 @@ func (q *QMP) ExecQueryQmpSchema(ctx context.Context) ([]SchemaInfo, error) {
 		return nil, err
 	}
 
-	// convert response to json
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract memory devices information: %v", err)
-	}
-
 	var schemaInfo []SchemaInfo
-	if err = json.Unmarshal(data, &schemaInfo); err != nil {
-		return nil, fmt.Errorf("unable to convert json to schemaInfo: %v", err)
+	if err = convertResponse(response, &schemaInfo); err != nil {
+		return nil, fmt.Errorf("unable to convert response to schemaInfo: %v", err)
 	}
 
 	return schemaInfo, nil
@@ -1630,14 +1608,9 @@ func (q *QMP) ExecuteQueryStatus(ctx context.Context) (StatusInfo, error) {
 		return StatusInfo{}, err
 	}
 
-	data, err := json.Marshal(response)
-	if err != nil {
-		return StatusInfo{}, fmt.Errorf("unable to extract migrate status information: %v", err)
-	}
-
 	var status StatusInfo
-	if err = json.Unmarshal(data, &status); err != nil {
-		return StatusInfo{}, fmt.Errorf("unable to convert migrate status information: %v", err)
+	if err = convertResponse(response, &status); err != nil {
+		return StatusInfo{}, fmt.Errorf("unable to convert status information: %v", err)
 	}
 
 	return status, nil

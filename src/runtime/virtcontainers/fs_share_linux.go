@@ -61,7 +61,7 @@ var (
 	// Pre-compiled regex patterns cached per resolved root directory
 	cachedConfigVolRegex     *regexp.Regexp
 	cachedTimestampDirRegex  *regexp.Regexp
-	regexCacheMutex          sync.Mutex
+	regexOnce                sync.Once
 )
 
 func unmountNoFollow(path string) error {
@@ -95,19 +95,12 @@ func resolveRootDir() string {
 // getCompiledRegexes returns cached compiled regex patterns for the current Kubernetes root directory
 // This avoids recompiling regexes for each FilesystemShare instance
 func getCompiledRegexes() (*regexp.Regexp, *regexp.Regexp) {
-	regexCacheMutex.Lock()
-	defer regexCacheMutex.Unlock()
-
-	kubernetesRootDir := resolveRootDir()
-
-	// Check if we already have compiled regexes for this root directory
-	if cachedConfigVolRegex != nil && cachedTimestampDirRegex != nil {
-		return cachedConfigVolRegex, cachedTimestampDirRegex
-	}
-
-	// Compile and cache the regexes
-	cachedConfigVolRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString)
-	cachedTimestampDirRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString + timestampDirRegexString)
+	regexOnce.Do(func() {
+		kubernetesRootDir := resolveRootDir()
+		// Compile and cache the regexes (only happens once)
+		cachedConfigVolRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString)
+		cachedTimestampDirRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString + timestampDirRegexString)
+	})
 
 	return cachedConfigVolRegex, cachedTimestampDirRegex
 }
