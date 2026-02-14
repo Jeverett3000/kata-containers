@@ -668,11 +668,11 @@ func convertResponse(response interface{}, target interface{}) error {
 	if err != nil {
 		return fmt.Errorf("unable to marshal response: %v", err)
 	}
-	
+
 	if err = json.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("unable to unmarshal to target type: %v", err)
 	}
-	
+
 	return nil
 }
 

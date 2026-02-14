@@ -276,10 +276,11 @@ func DoWithContext(ctx context.Context, retryableFunc RetryableFuncWithContext, 
 	wrappedFunc := func() error {
 		return retryableFunc(ctx)
 	}
-	
+
 	// Ensure the same context is used for retry cancellation
-	opts = append(opts, Context(ctx))
-	
+	// Prepend to avoid modifying the caller's slice
+	opts = append([]Option{Context(ctx)}, opts...)
+
 	return Do(wrappedFunc, opts...)
 }
 
