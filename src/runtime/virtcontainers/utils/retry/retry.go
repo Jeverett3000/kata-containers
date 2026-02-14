@@ -267,16 +267,18 @@ func Do(retryableFunc RetryableFunc, opts ...Option) error {
 	return errorLog
 }
 
-// DoWithContext is a convenience function that wraps a context-aware retryable function
-// This allows the function to be cancelled via context while still using the Do function
+// DoWithContext is a convenience function that wraps a context-aware retryable function.
+// The provided context is used for both cancellation checks during retries and is passed
+// to the retryable function. If opts contains a Context option, it will be overridden
+// by the ctx parameter to ensure consistent behavior.
 func DoWithContext(ctx context.Context, retryableFunc RetryableFuncWithContext, opts ...Option) error {
-	// Add the context to the options
-	opts = append(opts, Context(ctx))
-	
 	// Wrap the context-aware function to match RetryableFunc signature
 	wrappedFunc := func() error {
 		return retryableFunc(ctx)
 	}
+	
+	// Ensure the same context is used for retry cancellation
+	opts = append(opts, Context(ctx))
 	
 	return Do(wrappedFunc, opts...)
 }

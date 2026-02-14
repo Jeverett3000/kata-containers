@@ -659,11 +659,11 @@ func (q *QMP) executeCommand(ctx context.Context, name string, args map[string]i
 	return err
 }
 
-// convertResponse is a helper function to efficiently convert interface{} response to target type
-// This avoids the inefficient pattern of json.Marshal followed by json.Unmarshal
+// convertResponse is a helper function to efficiently convert interface{} response to target type.
+// This centralizes the JSON marshal/unmarshal pattern used throughout QMP query functions,
+// reducing code duplication and providing a single point for potential future optimization.
 func convertResponse(response interface{}, target interface{}) error {
 	// Re-encode the response as JSON and decode into target type
-	// While this still involves marshal/unmarshal, it's done in a single optimized step
 	data, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("unable to marshal response: %v", err)
