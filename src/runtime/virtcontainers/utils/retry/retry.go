@@ -8,6 +8,7 @@
 package retry
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -15,6 +16,9 @@ import (
 )
 
 type RetryableFunc func() error
+
+// RetryableFuncWithContext is a function that can be retried with context support
+type RetryableFuncWithContext func(ctx context.Context) error
 
 var (
 	DefaultAttempts      = uint(10)
@@ -24,6 +28,9 @@ var (
 	DefaultRetryIf       = IsRecoverable
 	DefaultDelayType     = CombineDelay(BackOffDelay, RandomDelay)
 	DefaultLastErrorOnly = false
+	// DefaultMaxDelay sets a reasonable upper bound for exponential backoff (30 seconds)
+	// to prevent unbounded delays in retry operations
+	DefaultMaxDelay = 30 * time.Second
 )
 
 // Function signature of retry if function
@@ -44,6 +51,7 @@ type Config struct {
 	maxJitter     time.Duration
 	attempts      uint
 	lastErrorOnly bool
+	context       context.Context
 }
 
 // Option represents an option for retry.
@@ -93,6 +101,14 @@ func MaxJitter(maxJitter time.Duration) Option {
 func DelayType(delayType DelayTypeFunc) Option {
 	return func(c *Config) {
 		c.delayType = delayType
+	}
+}
+
+// Context sets the context for the retry operation
+// When the context is cancelled, the retry loop will stop
+func Context(ctx context.Context) Option {
+	return func(c *Config) {
+		c.context = ctx
 	}
 }
 
@@ -174,15 +190,17 @@ func RetryIf(retryIf RetryIfFunc) Option {
 func Do(retryableFunc RetryableFunc, opts ...Option) error {
 	var n uint
 
-	// default
+	// default - set DefaultMaxDelay to prevent unbounded exponential backoff
 	config := &Config{
 		attempts:      DefaultAttempts,
 		delay:         DefaultDelayMS,
+		maxDelay:      DefaultMaxDelay,
 		maxJitter:     DefaultMaxJitterMS,
 		onRetry:       DefaultOnRetry,
 		retryIf:       DefaultRetryIf,
 		delayType:     DefaultDelayType,
 		lastErrorOnly: DefaultLastErrorOnly,
+		context:       context.Background(),
 	}
 
 	// apply opts
@@ -199,6 +217,13 @@ func Do(retryableFunc RetryableFunc, opts ...Option) error {
 
 	lastErrIndex := n
 	for n < config.attempts {
+		// Check if context is cancelled before attempting retry
+		select {
+		case <-config.context.Done():
+			return config.context.Err()
+		default:
+		}
+
 		err := retryableFunc()
 
 		if err != nil {
@@ -219,7 +244,13 @@ func Do(retryableFunc RetryableFunc, opts ...Option) error {
 			if config.maxDelay > 0 && delayTime > config.maxDelay {
 				delayTime = config.maxDelay
 			}
-			time.Sleep(delayTime)
+
+			// Use context-aware sleep to allow cancellation during delay
+			select {
+			case <-config.context.Done():
+				return config.context.Err()
+			case <-time.After(delayTime):
+			}
 		} else {
 			return nil
 		}
@@ -234,6 +265,20 @@ func Do(retryableFunc RetryableFunc, opts ...Option) error {
 		return errorLog[lastErrIndex]
 	}
 	return errorLog
+}
+
+// DoWithContext is a convenience function that wraps a context-aware retryable function
+// This allows the function to be cancelled via context while still using the Do function
+func DoWithContext(ctx context.Context, retryableFunc RetryableFuncWithContext, opts ...Option) error {
+	// Add the context to the options
+	opts = append(opts, Context(ctx))
+	
+	// Wrap the context-aware function to match RetryableFunc signature
+	wrappedFunc := func() error {
+		return retryableFunc(ctx)
+	}
+	
+	return Do(wrappedFunc, opts...)
 }
 
 // Error type represents list of errors in retry

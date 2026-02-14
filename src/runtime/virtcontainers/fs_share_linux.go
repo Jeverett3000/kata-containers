@@ -54,26 +54,62 @@ var configVolRegexString = "/pods/[a-fA-F0-9\\-]{36}/volumes/kubernetes\\.io~(co
 // The timestamp is of the format 2023_07_27_07_13_00.3704578339 or 2023_07_27_07_13_00.1257228
 var timestampDirRegexString = ".*[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}.[0-9]+$"
 
+var (
+	// Cache for resolved Kubernetes root directory to avoid repeated symlink resolution
+	resolvedKubernetesRootDir     string
+	resolvedKubernetesRootDirOnce sync.Once
+	// Pre-compiled regex patterns cached per resolved root directory
+	cachedConfigVolRegex     *regexp.Regexp
+	cachedTimestampDirRegex  *regexp.Regexp
+	regexCacheMutex          sync.Mutex
+)
+
 func unmountNoFollow(path string) error {
 	return syscall.Unmount(path, syscall.MNT_DETACH|UmountNoFollow)
 }
 
 // Resolve the K8S root dir if it is a symbolic link
+// This function caches the result to avoid repeated symlink resolution
 func resolveRootDir() string {
-	rootDir, err := os.Readlink(defaultKubernetesRootDir)
-	if err != nil {
-		// Use the default root dir in case of any errors resolving the root dir symlink
-		return defaultKubernetesRootDir
-	}
-	// Make root dir an absolute path if needed
-	if !filepath.IsAbs(rootDir) {
-		rootDir, err = filepath.Abs(filepath.Join(filepath.Dir(defaultKubernetesRootDir), rootDir))
+	resolvedKubernetesRootDirOnce.Do(func() {
+		rootDir, err := os.Readlink(defaultKubernetesRootDir)
 		if err != nil {
 			// Use the default root dir in case of any errors resolving the root dir symlink
-			return defaultKubernetesRootDir
+			resolvedKubernetesRootDir = defaultKubernetesRootDir
+			return
 		}
+		// Make root dir an absolute path if needed
+		if !filepath.IsAbs(rootDir) {
+			rootDir, err = filepath.Abs(filepath.Join(filepath.Dir(defaultKubernetesRootDir), rootDir))
+			if err != nil {
+				// Use the default root dir in case of any errors resolving the root dir symlink
+				resolvedKubernetesRootDir = defaultKubernetesRootDir
+				return
+			}
+		}
+		resolvedKubernetesRootDir = rootDir
+	})
+	return resolvedKubernetesRootDir
+}
+
+// getCompiledRegexes returns cached compiled regex patterns for the current Kubernetes root directory
+// This avoids recompiling regexes for each FilesystemShare instance
+func getCompiledRegexes() (*regexp.Regexp, *regexp.Regexp) {
+	regexCacheMutex.Lock()
+	defer regexCacheMutex.Unlock()
+
+	kubernetesRootDir := resolveRootDir()
+
+	// Check if we already have compiled regexes for this root directory
+	if cachedConfigVolRegex != nil && cachedTimestampDirRegex != nil {
+		return cachedConfigVolRegex, cachedTimestampDirRegex
 	}
-	return rootDir
+
+	// Compile and cache the regexes
+	cachedConfigVolRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString)
+	cachedTimestampDirRegex = regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString + timestampDirRegexString)
+
+	return cachedConfigVolRegex, cachedTimestampDirRegex
 }
 
 type FilesystemShare struct {
@@ -99,9 +135,8 @@ func NewFilesystemShare(s *Sandbox) (*FilesystemShare, error) {
 		return nil, fmt.Errorf("Creating watcher returned error %w", err)
 	}
 
-	kubernetesRootDir := resolveRootDir()
-	configVolRegex := regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString)
-	timestampDirRegex := regexp.MustCompile("^" + kubernetesRootDir + configVolRegexString + timestampDirRegexString)
+	// Use pre-compiled and cached regex patterns
+	configVolRegex, timestampDirRegex := getCompiledRegexes()
 
 	return &FilesystemShare{
 		prepared:           false,
