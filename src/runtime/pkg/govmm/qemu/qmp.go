@@ -1572,7 +1572,7 @@ func (q *QMP) ExecuteQueryMigration(ctx context.Context) (MigrationStatus, error
 
 	var status MigrationStatus
 	if err = convertResponse(response, &status); err != nil {
-		return MigrationStatus{}, fmt.Errorf("unable to convert migrate status information: %v", err)
+		return MigrationStatus{}, fmt.Errorf("unable to convert response to migration status: %v", err)
 	}
 
 	return status, nil
@@ -1610,7 +1610,7 @@ func (q *QMP) ExecuteQueryStatus(ctx context.Context) (StatusInfo, error) {
 
 	var status StatusInfo
 	if err = convertResponse(response, &status); err != nil {
-		return StatusInfo{}, fmt.Errorf("unable to convert status information: %v", err)
+		return StatusInfo{}, fmt.Errorf("unable to convert response to status info: %v", err)
 	}
 
 	return status, nil
